@@ -36,6 +36,9 @@ RUN apt-get update --quiet \
     && apt-get autoremove --yes \
     && apt-get clean
 
+  # Install required dependencies, including libncurses6
+RUN apt-get update && apt-get install -y libncurses6
+
 # Compile HHsuite from source.
 RUN git clone --branch v3.3.0 --single-branch https://github.com/soedinglab/hh-suite.git /tmp/hh-suite \
     && mkdir /tmp/hh-suite/build \
@@ -84,8 +87,18 @@ RUN ln -sf /usr/lib/x86_64-linux-gnu/libffi.so.7 /opt/conda/lib/libffi.so.7
 # ENTRYPOINT does not support easily running multiple commands, so instead we
 # write a shell script to wrap them up.
 WORKDIR /app/alphafold
-RUN echo $'#!/bin/bash\n\
-ldconfig\n\
-python /app/alphafold/run_alphafold.py "$@"' > /app/run_alphafold.sh \
-  && chmod +x /app/run_alphafold.sh
+COPY run_alphafold_wrapper.sh /app/run_alphafold.sh
+RUN chmod +x /app/run_alphafold.sh
+
+# Install lsb-release and curl first, then gcsfuse
+RUN apt-get update && apt-get install -y \
+    lsb-release \
+    curl \
+    gnupg \
+  && export GCSFUSE_REPO=gcsfuse-$(lsb_release -c -s) \
+  && echo "deb http://packages.cloud.google.com/apt $GCSFUSE_REPO main" | tee /etc/apt/sources.list.d/gcsfuse.list \
+  && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - \
+  && apt-get update && apt-get install -y gcsfuse
+
+
 ENTRYPOINT ["/app/run_alphafold.sh"]
